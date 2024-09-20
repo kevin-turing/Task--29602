@@ -1,1 +1,304 @@
-T1IR
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuit Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #1a1a2e;
+            color: #16e0bd;
+            font-family: 'Courier New', monospace;
+        }
+        .game-title {
+            font-size: 2.5rem;
+            text-shadow: 0 0 10px #16e0bd;
+        }
+        #gameBoard {
+            display: grid;
+            grid-template-columns: repeat(16, 30px);
+            gap: 1px;
+            margin: 20px auto;
+            background-color: #0f3460;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(22, 224, 189, 0.2);
+        }
+        .cell {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            background-color: #16213e;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        .cell.visible {
+            background-color: #0f3460;
+        }
+        .cell.player {
+            background-color: #16e0bd;
+            color: #1a1a2e;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .game-info {
+            background-color: #16213e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 10px rgba(22, 224, 189, 0.1);
+        }
+        .progress {
+            height: 25px;
+            background-color: #0f3460;
+        }
+        .progress-bar {
+            background-color: #16e0bd;
+        }
+        #message {
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-shadow: 0 0 5px #16e0bd;
+        }
+        .btn-custom {
+            background-color: #16e0bd;
+            color: #1a1a2e;
+            border: none;
+            transition: all 0.3s ease;
+        }
+        .btn-custom:hover {
+            background-color: #13c1a3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(22, 224, 189, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center game-title mb-4">Circuit Explorer</h1>
+        <div class="game-info">
+            <div class="row align-items-center">
+                <div class="col-md-3">
+                    <h5>Battery</h5>
+                    <div class="progress">
+                        <div id="batteryProgress" class="progress-bar" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">100%</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <h5>Moves: <span id="moves">0</span></h5>
+                </div>
+                <div class="col-md-3">
+                    <h5>Microchips: <span id="chips">0</span>/6</h5>
+                </div>
+                <div class="col-md-3">
+                    <h5>Signal Booster: <span id="booster">Inactive</span></h5>
+                </div>
+            </div>
+        </div>
+        <div id="gameBoard" class="mx-auto"></div>
+        <div id="message" class="text-center mt-3"></div>
+        <div class="text-center mt-4">
+            <button id="restartBtn" class="btn btn-custom btn-lg">Restart Game</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const board = document.getElementById('gameBoard');
+        const batteryProgress = document.getElementById('batteryProgress');
+        const movesDisplay = document.getElementById('moves');
+        const chipsDisplay = document.getElementById('chips');
+        const boosterDisplay = document.getElementById('booster');
+        const messageDisplay = document.getElementById('message');
+        const restartBtn = document.getElementById('restartBtn');
+
+        let playerPos = {x: 0, y: 0};
+        let battery = 100;
+        let moves = 0;
+        let chipsCollected = 0;
+        let signalBoosterActive = false;
+        let signalBoosterDuration = 0;
+        const gridSize = 16;
+        let visionRadius = 2;
+
+        let grid = [];
+
+        const ELEMENTS = {
+            PLAYER: '🤖',
+            CHIP: '💾',
+            SHORT: '⚡',
+            BOOSTER: '📡'
+        };
+
+        function createGrid() {
+            board.innerHTML = '';
+            grid = [];
+            for(let y = 0; y < gridSize; y++) {
+                grid[y] = [];
+                for(let x = 0; x < gridSize; x++) {
+                    let cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.id = `cell-${x}-${y}`;
+                    board.appendChild(cell);
+                    grid[y][x] = {type: 'empty', visible: false};
+                }
+            }
+            placeElements();
+            updatePlayerPosition(0, 0);
+        }
+
+        function placeElements() {
+            placeRandomElements('chip', 6, ELEMENTS.CHIP);
+            placeRandomElements('short', 8, ELEMENTS.SHORT);
+            placeRandomElements('booster', 1, ELEMENTS.BOOSTER);
+        }
+
+        function placeRandomElements(type, count, symbol) {
+            for(let i = 0; i < count; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * gridSize);
+                    y = Math.floor(Math.random() * gridSize);
+                } while(grid[y][x].type !== 'empty');
+                grid[y][x] = {type: type, symbol: symbol, visible: false};
+            }
+        }
+
+        function updatePlayerPosition(dx, dy) {
+            const newX = playerPos.x + dx;
+            const newY = playerPos.y + dy;
+            if(newX < 0 || newY < 0 || newX >= gridSize || newY >= gridSize) return;
+            
+            document.getElementById(`cell-${playerPos.x}-${playerPos.y}`).classList.remove('player');
+            document.getElementById(`cell-${playerPos.x}-${playerPos.y}`).textContent = grid[playerPos.y][playerPos.x].symbol || '';
+            
+            playerPos = {x: newX, y: newY};
+            document.getElementById(`cell-${playerPos.x}-${playerPos.y}`).classList.add('player');
+            document.getElementById(`cell-${playerPos.x}-${playerPos.y}`).textContent = ELEMENTS.PLAYER;
+            
+            checkCell();
+            updateVisibility();
+            updateGameState();
+        }
+
+        function checkCell() {
+            const cell = grid[playerPos.y][playerPos.x];
+            switch(cell.type) {
+                case 'chip':
+                    chipsCollected++;
+                    cell.type = 'empty';
+                    cell.symbol = '';
+                    break;
+                case 'short':
+                    battery -= 20;
+                    break;
+                case 'booster':
+                    activateSignalBooster();
+                    cell.type = 'empty';
+                    cell.symbol = '';
+                    break;
+            }
+        }
+
+        function activateSignalBooster() {
+            signalBoosterActive = true;
+            signalBoosterDuration = 10;
+            visionRadius = 4;
+            boosterDisplay.textContent = 'Active';
+            boosterDisplay.style.color = '#16e0bd';
+        }
+
+        function updateVisibility() {
+            for(let y = 0; y < gridSize; y++) {
+                for(let x = 0; x < gridSize; x++) {
+                    const cell = document.getElementById(`cell-${x}-${y}`);
+                    const distance = Math.max(Math.abs(x - playerPos.x), Math.abs(y - playerPos.y));
+                    if(distance <= visionRadius) {
+                        cell.classList.add('visible');
+                        grid[y][x].visible = true;
+                        cell.textContent = (x === playerPos.x && y === playerPos.y) ? ELEMENTS.PLAYER : (grid[y][x].symbol || '');
+                    } else {
+                        cell.classList.remove('visible');
+                        grid[y][x].visible = false;
+                        cell.textContent = '';
+                    }
+                }
+            }
+        }
+
+        function updateGameState() {
+            battery -= 1;
+            moves++;
+            batteryProgress.style.width = `${battery}%`;
+            batteryProgress.textContent = `${battery}%`;
+            batteryProgress.setAttribute('aria-valuenow', battery);
+            movesDisplay.textContent = moves;
+            chipsDisplay.textContent = chipsCollected;
+            
+            if(signalBoosterActive) {
+                signalBoosterDuration--;
+                if(signalBoosterDuration === 0) {
+                    signalBoosterActive = false;
+                    visionRadius = 2;
+                    boosterDisplay.textContent = 'Inactive';
+                    boosterDisplay.style.color = '';
+                }
+            }
+            
+            if(battery <= 0) {
+                endGame('Game Over! Your battery has run out.');
+            } else if(chipsCollected === 6) {
+                endGame('Congratulations! You have upgraded your system!');
+            }
+        }
+
+        function endGame(message) {
+            messageDisplay.textContent = message;
+            document.removeEventListener('keydown', handleKeyPress);
+            restartBtn.style.display = 'inline-block';
+        }
+
+        function handleKeyPress(e) {
+            switch(e.key) {
+                case 'ArrowUp': updatePlayerPosition(0, -1); break;
+                case 'ArrowDown': updatePlayerPosition(0, 1); break;
+                case 'ArrowLeft': updatePlayerPosition(-1, 0); break;
+                case 'ArrowRight': updatePlayerPosition(1, 0); break;
+            }
+        }
+
+
+
+        function startGame() {
+            playerPos = {x: 0, y: 0};
+            battery = 100;
+            moves = 0;
+            chipsCollected = 0;
+            signalBoosterActive = false;
+            signalBoosterDuration = 0;
+            visionRadius = 2;
+            
+            createGrid();
+            updateGameState();
+            messageDisplay.textContent = '';
+            restartBtn.style.display = 'none';
+            document.addEventListener('keydown', handleKeyPress);
+        }
+
+        restartBtn.addEventListener('click', startGame);
+        startGame();
+    </script>
+</body>
+</html>

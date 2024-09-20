@@ -1,164 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>THEMIS & ARTEMIS Mission Visualization</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6"></script>
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"
-    />
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background: #000;
-        color: #fff;
-        overflow: hidden;
-      }
-      #visualization {
-        width: 100vw;
-        height: 100vh;
-        position: relative;
-      }
-      .orbit {
-        stroke: #fff;
-        fill: none;
-        stroke-width: 1;
-      }
-      .probe {
-        fill: #ffd700;
-        stroke: #000;
-        stroke-width: 0.5;
-      }
-      .info-box {
-        position: absolute;
-        background: rgba(0, 0, 0, 0.8);
-        padding: 10px;
-        border-radius: 5px;
-        display: none;
-      }
-      .phase-button {
-        background-color: #4caf50; /* Green */
-        border: none;
-        color: white;
-        padding: 15px 32px;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 16px;
-        margin: 4px 2px;
-        cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="visualization"></div>
-    <div id="info" class="info-box"></div>
-    <div style="position: absolute; bottom: 10px; left: 10px">
-      <button class="phase-button" onclick="showPhase('Tail')">
-        Tail Phase
-      </button>
-      <button class="phase-button" onclick="showPhase('Dawn')">
-        Dawn Phase
-      </button>
-      <button class="phase-button" onclick="showPhase('Dayside')">
-        Dayside Phase
-      </button>
-      <button class="phase-button" onclick="showPhase('Dusk')">
-        Dusk Phase
-      </button>
-    </div>
+<head>
+<meta charset="UTF-8">
+<title>Circuit Explorer</title>
+<style>
+    body { font-family: 'Courier New', monospace; background: #000; color: #0F0; }
+    #gameBoard { display: grid; grid-template-columns: repeat(16, 20px); gap: 1px; }
+    .cell { width: 20px; height: 20px; text-align: center; line-height: 20px; background: #333; }
+    .player { background: #0F0; }
+    .microchip { color: #FF0; }
+    .short { color: #F00; }
+    .visible { background: #444; }
+    #stats { padding: 10px; color: #0F0; }
+</style>
+</head>
+<body>
 
-    <script>
-      const width = window.innerWidth,
-        height = window.innerHeight;
-      const svg = d3
-        .select('#visualization')
-        .append('svg')
-        .attr('width', width)
-        .attr('height', height);
+<div id="stats">
+    <h2>Circuit Explorer</h2>
+    <div>Battery: <span id="battery">100</span>% | Moves: <span id="moves">0</span> | Microchips: <span id="chips">0</span>/6</div>
+</div>
+<div id="gameBoard"></div>
 
-      const phases = {
-        Tail: { apogee: 12, sector: 'nightside', mmsPosition: 'dawn' },
-        Dawn: { apogee: 12, sector: 'dawnside', mmsPosition: 'dayside' },
-        Dayside: { apogee: 12, sector: 'dayside', mmsPosition: 'dusk' },
-        Dusk: { apogee: 13, sector: 'duskside', mmsPosition: 'tail' },
-      };
+<script>
+    const board = document.getElementById('gameBoard');
+    const battery = document.getElementById('battery');
+    const moves = document.getElementById('moves');
+    const chips = document.getElementById('chips');
+    
+    let playerPos = {x: 0, y: 0};
+    let gameState = {
+        battery: 100,
+        moveCount: 0,
+        chipsCollected: 0,
+        board: [],
+        visibility: 5
+    };
 
-      function drawOrbits(phase) {
-        svg.selectAll('*').remove();
-        const phaseData = phases[phase];
-        const scale = d3
-          .scaleLinear()
-          .domain([0, 30])
-          .range([0, height / 2 - 50]);
-        const center = { x: width / 2, y: height / 2 };
+    // Initialize game board
+    function initBoard() {
+        for(let y = 0; y < 16; y++) {
+            gameState.board[y] = [];
+            for(let x = 0; x < 16; x++) {
+                let cell = {type: 'empty', visible: false};
+                if(Math.random() < 0.05) cell.type = 'chip';
+                else if(Math.random() < 0.03) cell.type = 'short';
+                gameState.board[y][x] = cell;
+                let div = document.createElement('div');
+                div.className = 'cell';
+                div.id = `cell-${x}-${y}`;
+                board.appendChild(div);
+            }
+        }
+        gameState.board[0][0].type = 'player';
+        updateCell(0, 0);
+    }
 
-        // Earth
-        svg
-          .append('circle')
-          .attr('cx', center.x)
-          .attr('cy', center.y)
-          .attr('r', 20)
-          .attr('fill', 'blue');
+    function updateCell(x, y) {
+        const cell = document.getElementById(`cell-${x}-${y}`);
+        cell.textContent = '';
+        switch(gameState.board[y][x].type) {
+            case 'player': cell.textContent = '🔋'; break;
+            case 'chip': cell.textContent = '💾'; break;
+            case 'short': cell.textContent = '⚡'; break;
+        }
+        if(gameState.board[y][x].visible || gameState.board[y][x].type === 'player') {
+            cell.classList.add('visible');
+        } else {
+            cell.classList.remove('visible');
+        }
+    }
 
-        // Draw THEMIS orbits
-        for (let i = 0; i < 3; i++) {
-          const r = scale(phaseData.apogee + i * 0.5);
-          svg
-            .append('ellipse')
-            .attr('class', 'orbit')
-            .attr('cx', center.x)
-            .attr('cy', center.y)
-            .attr('rx', r)
-            .attr('ry', r * 0.5)
-            .attr('transform', `rotate(${i * 30}, ${center.x}, ${center.y})`);
+    function movePlayer(dx, dy) {
+        let newX = playerPos.x + dx;
+        let newY = playerPos.y + dy;
+        if(newX < 0 || newY < 0 || newX >= 16 || newY >= 16) return;
 
-          // Probe position
-          svg
-            .append('circle')
-            .attr('class', 'probe')
-            .attr('cx', center.x + r * Math.cos((i * Math.PI) / 6))
-            .attr('cy', center.y + r * 0.5 * Math.sin((i * Math.PI) / 6))
-            .attr('r', 5)
-            .on('mouseover', function () {
-              showInfo(phase, i);
-            })
-            .on('mouseout', hideInfo);
+        let currentCell = gameState.board[playerPos.y][playerPos.x];
+        let newCell = gameState.board[newY][newX];
+
+        if(newCell.type === 'chip') {
+            gameState.chipsCollected++;
+            chips.textContent = gameState.chipsCollected;
+        } else if(newCell.type === 'short') {
+            gameState.battery -= 20;
         }
 
-        // MMS position indicator
-        svg
-          .append('text')
-          .attr('x', width - 100)
-          .attr('y', 50)
-          .text(`MMS: ${phaseData.mmsPosition} sector`)
-          .attr('fill', 'white');
-      }
+        currentCell.type = 'empty';
+        newCell.type = 'player';
+        updateCell(playerPos.x, playerPos.y);
+        playerPos = {x: newX, y: newY};
+        updateCell(playerPos.x, playerPos.y);
 
-      function showInfo(phase, probeIndex) {
-        d3.select('#info')
-          .style('display', 'block')
-          .html(
-            `Phase: ${phase}<br>Probe ${probeIndex + 3}: Studying ${
-              phaseData.sector
-            } interactions`
-          )
-          .style('left', d3.event.pageX + 10 + 'px')
-          .style('top', d3.event.pageY - 28 + 'px');
-      }
+        gameState.moveCount++;
+        gameState.battery -= 1;
+        battery.textContent = gameState.battery;
+        moves.textContent = gameState.moveCount;
 
-      function hideInfo() {
-        d3.select('#info').style('display', 'none');
-      }
+        updateVisibility();
+        checkGameState();
+    }
 
-      function showPhase(phase) {
-        drawOrbits(phase);
-      }
+    function updateVisibility() {
+        for(let y = 0; y < 16; y++) {
+            for(let x = 0; x < 16; x++) {
+                gameState.board[y][x].visible = 
+                    Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y) < gameState.visibility;
+                updateCell(x, y);
+            }
+        }
+    }
 
-      // Initial draw
-      drawOrbits('Tail');
-    </script>
-  </body>
+    function checkGameState() {
+        if(gameState.battery <= 0) {
+            alert('Game Over! Your battery has drained.');
+        } else if(gameState.chipsCollected === 6) {
+            alert('Congratulations! You have upgraded your system!');
+        }
+    }
+
+    // Event listener for key presses
+    document.addEventListener('keydown', function(e) {
+        switch(e.key) {
+            case 'ArrowUp': movePlayer(0, -1); break;
+            case 'ArrowDown': movePlayer(0, 1); break;
+            case 'ArrowLeft': movePlayer(-1, 0); break;
+            case 'ArrowRight': movePlayer(1, 0); break;
+        }
+    });
+
+    // Start the game
+    initBoard();
+</script>
+</body>
 </html>

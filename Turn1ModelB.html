@@ -1,1 +1,142 @@
-T1MB
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circuit Explorer</title>
+<style>
+    body { font-family: 'Courier New', monospace; background-color: #000; color: #0F0; }
+    #gameBoard { display: grid; grid-template-columns: repeat(16, 20px); gap: 1px; margin: 20px auto; }
+    .cell { width: 20px; height: 20px; text-align: center; line-height: 20px; }
+    .visible { background-color: #333; }
+    .player { background-color: #FF0; color: #000; }
+    #info { position: fixed; top: 0; left: 0; right: 0; background: #000; padding: 10px; }
+    .hidden { visibility: hidden; }
+</style>
+</head>
+<body>
+<div id="info">
+    <h2>Circuit Explorer</h2>
+    <div>Battery: <span id="battery">100</span>%, Moves: <span id="moves">0</span>, Microchips: <span id="chips">0</span>/6</div>
+</div>
+<div id="gameBoard"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const board = document.getElementById('gameBoard');
+    const batteryDisplay = document.getElementById('battery');
+    const movesDisplay = document.getElementById('moves');
+    const chipsDisplay = document.getElementById('chips');
+    let playerPos = {x: 0, y: 0};
+    let battery = 100;
+    let moves = 0;
+    let chipsCollected = 0;
+    const gridSize = 16;
+    const visionRadius = 2; // 5x5 visibility
+
+    // Game elements placement
+    const elements = [
+        {type: 'chip', count: 6, symbol: '💾'},
+        {type: 'short', count: 8, symbol: '⚠️'},
+        // Optional: {type: 'booster', count: 1, symbol: '📡'}
+    ];
+
+    let grid = [];
+
+    function createGrid() {
+        for(let y = 0; y < gridSize; y++) {
+            grid[y] = [];
+            for(let x = 0; x < gridSize; x++) {
+                let cell = document.createElement('div');
+                cell.className = 'cell hidden';
+                cell.id = `cell-${x}-${y}`;
+                board.appendChild(cell);
+                grid[y][x] = {element: null, visible: false};
+            }
+        }
+        placeElements();
+        updatePlayerPosition(0, 0);
+    }
+
+    function placeElements() {
+        elements.forEach(item => {
+            for(let i = 0; i < item.count; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * gridSize);
+                    y = Math.floor(Math.random() * gridSize);
+                } while(grid[y][x].element !== null);
+                grid[y][x].element = item.symbol;
+            }
+        });
+    }
+
+    function updatePlayerPosition(x, y) {
+        const newPos = {x: playerPos.x + x, y: playerPos.y + y};
+        if(newPos.x < 0 || newPos.y < 0 || newPos.x >= gridSize || newPos.y >= gridSize) return;
+        
+        document.getElementById(`cell-${playerPos.x}-${playerPos.y}`).classList.remove('player');
+        playerPos = newPos;
+        document.getElementById(`cell-${playerPos.x}-${playerPos.y}`).classList.add('player');
+        updateVisibility();
+        checkElement();
+        updateGameState();
+    }
+
+    function updateVisibility() {
+        for(let y = 0; y < gridSize; y++) {
+            for(let x = 0; x < gridSize; x++) {
+                const cell = document.getElementById(`cell-${x}-${y}`);
+                if(Math.abs(x - playerPos.x) <= visionRadius && Math.abs(y - playerPos.y) <= visionRadius) {
+                    cell.classList.remove('hidden');
+                    grid[y][x].visible = true;
+                    if(grid[y][x].element) cell.textContent = grid[y][x].element;
+                } else {
+                    cell.classList.add('hidden');
+                    cell.textContent = '';
+                    grid[y][x].visible = false;
+                }
+            }
+        }
+    }
+
+    function checkElement() {
+        let cell = grid[playerPos.y][playerPos.x];
+        if(cell.element === '💾') {
+            chipsCollected++;
+            cell.element = null;
+        } else if(cell.element === '⚠️') {
+            battery -= 20; // Large battery drain for short circuits
+        }
+    }
+
+    function updateGameState() {
+        battery -= 1; // Battery drain per move
+        moves++;
+        batteryDisplay.textContent = battery;
+        movesDisplay.textContent = moves;
+        chipsDisplay.textContent = chipsCollected;
+        
+        if(battery <= 0) {
+            alert('Game Over! Your battery has run out.');
+            location.reload();
+        } else if(chipsCollected === 6) {
+            alert('Congratulations! You have upgraded your system!');
+            location.reload();
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        switch(e.key) {
+            case 'ArrowUp': updatePlayerPosition(0, -1); break;
+            case 'ArrowDown': updatePlayerPosition(0, 1); break;
+            case 'ArrowLeft': updatePlayerPosition(-1, 0); break;
+            case 'ArrowRight': updatePlayerPosition(1, 0); break;
+        }
+    });
+
+    createGrid();
+});
+</script>
+</body>
+</html>
